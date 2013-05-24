@@ -1,0 +1,318 @@
+#include "CompareSurfaces.h"
+
+CompareSurfaces::CompareSurfaces()
+{
+    // create a new readers
+    m_recieverReader = vtkSmartPointer<vtkXMLPolyDataReader>::New();
+    m_donorReader = vtkSmartPointer<vtkXMLPolyDataReader>::New();
+    /* set the points for the initial transform. The default
+     * values don't transform anything. */
+    m_s00[0] = 0;
+    m_s00[1] = 0;
+    m_s00[2] = 0;
+
+    m_s01[0] = 1;
+    m_s01[1] = 0;
+    m_s01[2] = 0;
+
+    m_s02[0] = 0;
+    m_s02[1] = 1;
+    m_s02[2] = 0;
+
+    m_s10[0] = 0;
+    m_s10[1] = 0;
+    m_s10[2] = 0;
+
+    m_s11[0] = 1;
+    m_s11[1] = 0;
+    m_s11[2] = 0;
+
+    m_s12[0] = 0;
+    m_s12[1] = 1;
+    m_s12[2] = 0;
+    // create the output surface
+    //m_compiledSurf = vtkSmartPointer<vtk>::New();
+    // create the extruded volume made from the donor
+    m_extrudedVolume = vtkSmartPointer<vtkUnstructuredGrid>::New();
+    // set the default data names
+    m_recieverName = "reciever";
+    m_donorName = "donor";
+}
+
+CompareSurfaces::~CompareSurfaces()
+{
+    //destructor. Nothing to do here.
+}
+
+void CompareSurfaces::ExtrudeSurface(vtkSmartPointer<vtkPolyData> surf,double vect[3])
+{
+    // make the vector 5 mm long
+    double length = sqrt(pow(vect[0],2)+pow(vect[1],2)+pow(vect[2],2));
+    double scale = 5/length;
+    vect[0] = vect[0]*scale;
+    vect[1] = vect[1]*scale;
+    vect[2] = vect[2]*scale;
+    // transform the surface to be extruded in the -vect
+    vtkSmartPointer<vtkTransform> transformer = vtkSmartPointer<vtkTransform>::New();
+    transformer->Translate(-vect[0],-vect[1],-vect[2]);
+    vtkSmartPointer<vtkTransformPolyDataFilter> polyMover = vtkSmartPointer<vtkTransformPolyDataFilter>::New();
+    polyMover->SetTransform(transformer);
+    polyMover->SetInput(surf);
+
+    // use the append filter to convert the PolyData to UnstructuredGrid
+    vtkSmartPointer<vtkAppendFilter> appender = vtkSmartPointer<vtkAppendFilter>::New();
+    appender->SetInputConnection(polyMover->GetOutputPort());
+    appender->Update();
+    vtkSmartPointer<vtkUnstructuredGrid> tempGrid = appender->GetOutput();
+
+    // iterate through the points
+    unsigned int originalNumberOfPoints = tempGrid->GetNumberOfPoints();
+    for (unsigned int i = 0; i < originalNumberOfPoints;++i)
+    {
+        double cPoint[3];
+        tempGrid->GetPoint(i,cPoint);
+        // for each point, create a child point in the point data at a location 2*vect away
+        tempGrid->GetPoints()->InsertNextPoint(cPoint[0]+2*vect[0],cPoint[1]+2*vect[1],cPoint[2]+2*vect[2]);
+        // get the data for the parent point and copy it into the child point
+        tempGrid->GetPointData()->GetArray(0)->InsertNextTuple(tempGrid->GetPointData()->GetArray(0)->GetTuple(i));
+    }
+
+    // iterate through the cells (trangles) of the original data
+    unsigned int originalNumberOfCells = tempGrid->GetNumberOfCells();
+    for (unsigned int i= 0; i < originalNumberOfCells;++i)
+    {
+        // for each cell, get a list of the defining points
+        vtkSmartPointer<vtkIdList> cPoints = vtkSmartPointer<vtkIdList>::New();
+        tempGrid->GetCellPoints(i,cPoints);
+        // create a list of points for the new, wedge cell. The points are the original list
+        // plus the child poit of each one of those. They are sepearted by the originial number of points
+        vtkSmartPointer<vtkIdList> newPoints = vtkSmartPointer<vtkIdList>::New();
+        newPoints->InsertNextId(cPoints->GetId(0));
+        newPoints->InsertNextId(cPoints->GetId(1));
+        newPoints->InsertNextId(cPoints->GetId(2));
+        newPoints->InsertNextId(cPoints->GetId(0)+originalNumberOfPoints);
+        newPoints->InsertNextId(cPoints->GetId(1)+originalNumberOfPoints);
+        newPoints->InsertNextId(cPoints->GetId(2)+originalNumberOfPoints);
+        // insert a new wedge cell, defined by the points
+        tempGrid->InsertNextCell(13,newPoints);
+
+    }
+
+    // put the data into the classes extruded volume.
+    m_extrudedVolume = tempGrid;
+}
+
+void CompareSurfaces::GetSurfaceCentroid(vtkSmartPointer<vtkPolyData> surface,double centroid[3])
+{
+    double ptx = 0;
+    double pty = 0;
+    double ptz = 0;
+    for (vtkIdType i = 0; i < surface->GetPoints()->GetNumberOfPoints(); ++i)
+    {
+        double pt[3];
+        surface->GetPoints()->GetPoint(i,pt);
+        ptx += pt[0];
+        pty += pt[1];
+        ptz += pt[2];
+    }
+    centroid[0] = ptx/surface->GetPoints()->GetNumberOfPoints();
+    centroid[1] = pty/surface->GetPoints()->GetNumberOfPoints();
+    centroid[2] = ptz/surface->GetPoints()->GetNumberOfPoints();
+}
+
+vtkSmartPointer<vtkPolyData> CompareSurfaces::ProbeVolume(vtkSmartPointer<vtkUnstructuredGrid> volume, vtkSmartPointer<vtkPolyData> surface)
+{
+    vtkSmartPointer<vtkPolyData> outputSurface = vtkSmartPointer<vtkPolyData>::New();
+    outputSurface->DeepCopy(surface);
+    unsigned int numberOfArrays = outputSurface->GetPointData()->GetNumberOfArrays();
+    for (unsigned int i = 0; i < numberOfArrays; ++i)
+    {
+        outputSurface->GetPointData()->RemoveArray(i);
+    }
+
+    // create a new array to hold the data
+    vtkSmartPointer<vtkDoubleArray> newArray = vtkSmartPointer<vtkDoubleArray>::New();
+    newArray->SetNumberOfComponents(1);
+    newArray->SetNumberOfTuples(outputSurface->GetNumberOfPoints());
+    newArray->SetName("Extracted Data");
+    outputSurface->GetPointData()->AddArray(newArray);
+
+    // create a cell locator to aid in finding the cells that points belong to
+    vtkSmartPointer<vtkCellLocator> cellLocator =
+    vtkSmartPointer<vtkCellLocator>::New();
+    cellLocator->SetDataSet(volume);
+    cellLocator->BuildLocator();
+
+    // these will be used in the loop to hold data
+    vtkSmartPointer<vtkWedge> cCell;
+    double blankTuple = -1000000.;
+    double cPoint[3];
+    double closestPoint[3];
+    int subId;
+    double pcoords[3];
+    double dist2;
+    double weights[6];
+    double cellData[6];
+    double cValue;
+    vtkIdType cCellNo;
+    vtkSmartPointer<vtkIdList> cellPoints;
+
+    // loop through each point in the input surface
+    for (unsigned int i = 0; i < outputSurface->GetNumberOfPoints(); i++)
+    {
+        // get the point location
+        outputSurface->GetPoint(i,cPoint);
+        // find the cell that contains the point
+        cCellNo = cellLocator->FindCell(cPoint);
+        if (cCellNo == -1)  // if the point is outside of cells, enter a value of zero in the data array
+        {
+            newArray->SetTuple(i,&blankTuple);
+            continue;
+        }
+        if (volume->GetCellType(cCellNo) != 13) // if the cell isn't a wedge, skip it.
+        {
+            continue;
+        }
+        // get the point IDs that define the containing cell
+        cellPoints = volume->GetCell(cCellNo)->GetPointIds();
+        // get the strain values for each point in the containing cell
+        cellData[0] = *volume->GetPointData()->GetArray(0)->GetTuple(cellPoints->GetId(0));
+        cellData[1] = *volume->GetPointData()->GetArray(0)->GetTuple(cellPoints->GetId(1));
+        cellData[2] = *volume->GetPointData()->GetArray(0)->GetTuple(cellPoints->GetId(2));
+        cellData[3] = *volume->GetPointData()->GetArray(0)->GetTuple(cellPoints->GetId(3));
+        cellData[4] = *volume->GetPointData()->GetArray(0)->GetTuple(cellPoints->GetId(4));
+        cellData[5] = *volume->GetPointData()->GetArray(0)->GetTuple(cellPoints->GetId(5));
+
+        // use the EvaluatePosition method of the cell to get the interpolation function weight values. The rest of the data is not used
+        volume->GetCell(cCellNo)->EvaluatePosition(cPoint,closestPoint,subId,pcoords,dist2,weights);
+        // calculate the value at the point by multiplying each weight by the data
+        cValue = cellData[0]*weights[0] + cellData[1]*weights[1] + cellData[2]*weights[2] + cellData[3]*weights[3] + cellData[4]*weights[4] + cellData[5]*weights[5];
+        // set the data.
+        newArray->SetTuple(i,&cValue);
+
+    }
+    return outputSurface;
+}
+
+vtkSmartPointer<vtkPolyData> CompareSurfaces::AlignSurfaces(vtkSmartPointer<vtkPolyData> recieverSurf, vtkSmartPointer<vtkPolyData> donorSurf)
+{
+    // put the points from the initialization into vtkPolyData
+    vtkSmartPointer<vtkPoints> pts1 = vtkSmartPointer<vtkPoints>::New();
+    vtkSmartPointer<vtkCellArray> cells1 = vtkSmartPointer<vtkCellArray>::New();
+
+    // create a polydata surface from the input ponits to initialize the alignment
+    pts1->InsertNextPoint(m_s00);
+    pts1->InsertNextPoint(m_s01);
+    pts1->InsertNextPoint(m_s02);
+    cells1->InsertNextCell(3);
+    cells1->InsertCellPoint(0);
+    cells1->InsertCellPoint(1);
+    cells1->InsertCellPoint(2);
+    vtkSmartPointer<vtkPolyData> poly1 = vtkSmartPointer<vtkPolyData>::New();
+    poly1->SetPoints(pts1);
+    poly1->SetPolys(cells1);
+
+    // second set of polydata points into a surface
+    vtkSmartPointer<vtkPoints> pts2 = vtkSmartPointer<vtkPoints>::New();
+    vtkSmartPointer<vtkCellArray> cells2 = vtkSmartPointer<vtkCellArray>::New();
+    pts2->InsertNextPoint(m_s10);
+    pts2->InsertNextPoint(m_s11);
+    pts2->InsertNextPoint(m_s12);
+    cells2->InsertNextCell(3);
+    cells2->InsertCellPoint(0);
+    cells2->InsertCellPoint(1);
+    cells2->InsertCellPoint(2);
+    vtkSmartPointer<vtkPolyData> poly2 = vtkSmartPointer<vtkPolyData>::New();
+    poly2->SetPoints(pts2);
+    poly2->SetPolys(cells2);
+
+    // use an initial ICP on the picked points to calculate a rough transform
+    vtkSmartPointer<vtkIterativeClosestPointTransform> initialIcp = vtkSmartPointer<vtkIterativeClosestPointTransform>::New();
+    initialIcp->SetSource(poly1);
+    initialIcp->SetTarget(poly2);
+    initialIcp->GetLandmarkTransform()->SetModeToRigidBody();
+    initialIcp->StartByMatchingCentroidsOn();
+    initialIcp->Modified();
+    initialIcp->Update();
+
+    // transform recieverSurf using the rough transform
+    vtkSmartPointer<vtkTransformPolyDataFilter> initialTransform = vtkSmartPointer<vtkTransformPolyDataFilter>::New();
+    initialTransform->SetInput(recieverSurf);
+    initialTransform->SetTransform(initialIcp);
+    initialTransform->Update();
+
+    // use the output of the of the rough transform as the input to the fine icp calculation
+    vtkSmartPointer<vtkIterativeClosestPointTransform> icp = vtkSmartPointer<vtkIterativeClosestPointTransform>::New();
+    icp->SetSource(initialTransform->GetOutput());
+    icp->SetTarget(donorSurf);
+    icp->GetLandmarkTransform()->SetModeToRigidBody();
+    icp->Modified();
+    icp->Update();
+
+    // use the output of icp as the final transform.
+    vtkSmartPointer<vtkTransformPolyDataFilter> finalTransform = vtkSmartPointer<vtkTransformPolyDataFilter>::New();
+    finalTransform->SetInput(initialTransform->GetOutput());
+    finalTransform->SetTransform(icp);
+    finalTransform->Update();
+
+    // return the output from the final transfrom
+    return finalTransform->GetOutput();
+}
+
+void CompareSurfaces::CompileData( vtkSmartPointer<vtkPolyData> recieverSurf, vtkSmartPointer<vtkPolyData> donorSurf)
+{
+    // copy the structure of the reciever surface as this is the of the compiled surface
+    vtkSmartPointer<vtkPolyData> tempSurface = vtkSmartPointer<vtkPolyData>::New();
+    tempSurface->CopyStructure(recieverSurf);
+
+    // create a new data array for the drop tower strain
+    vtkSmartPointer<vtkDoubleArray> recieverData = vtkSmartPointer<vtkDoubleArray>::New();
+    recieverData->DeepCopy(recieverSurf->GetPointData()->GetArray(0));
+    recieverData->SetName(m_recieverName.c_str());
+
+    // create a new data array for the instron strain
+    vtkSmartPointer<vtkDoubleArray> donorData = vtkSmartPointer<vtkDoubleArray>::New();
+    donorData->DeepCopy(donorSurf->GetPointData()->GetArray(0));
+    donorData->SetName(m_donorName.c_str());
+
+    // create a new data array for the difference between them
+    vtkSmartPointer<vtkDoubleArray> diff = vtkSmartPointer<vtkDoubleArray>::New();
+    diff->SetNumberOfTuples(tempSurface->GetNumberOfPoints());
+    diff->SetNumberOfComponents(1);
+    diff->SetName("delta");
+
+    // iterate through the points in the compliled surface and fill in the data arrays.
+    for (unsigned int i = 0; i<tempSurface->GetNumberOfPoints();++i)
+    {
+        double* cDonor = donorData->GetTuple(i);
+        double* cReciever = recieverData->GetTuple(i);
+        double cDiff;
+        // in the ProbvVolume method, -1000000 was used to indicate a point with no data. Carry that though.
+        if (*cReciever == -1000000)
+        {
+            cDiff = -1000000;
+        }
+        else
+        {
+            cDiff = *cDonor-*cReciever;
+        }
+        diff->SetTuple(i,&cDiff);
+    }
+
+    // add the arrays to the point data
+    tempSurface->GetPointData()->AddArray(recieverData);
+    tempSurface->GetPointData()->AddArray(donorData);
+    tempSurface->GetPointData()->AddArray(diff);
+
+    // threshold the temporary surface to remove data where there was no overlap
+    vtkSmartPointer<vtkThreshold> threshold = vtkSmartPointer<vtkThreshold>::New();
+    threshold->SetInput(tempSurface);
+    threshold->SetInputArrayToProcess(0,0,0,
+                                      vtkDataObject::FIELD_ASSOCIATION_POINTS,
+                                      "delta");
+    threshold->ThresholdByUpper(-999999);
+    threshold->Update();
+
+    // return the compiled surface
+    m_compiledSurf = threshold->GetOutput();
+}
