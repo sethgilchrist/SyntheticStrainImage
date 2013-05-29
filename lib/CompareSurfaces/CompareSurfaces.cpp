@@ -316,3 +316,37 @@ void CompareSurfaces::CompileData( vtkSmartPointer<vtkPolyData> recieverSurf, vt
     // return the compiled surface
     m_compiledSurf = threshold->GetOutput();
 }
+
+void CompareSurfaces::WriteDataToFile(std::string fileName)
+{
+    // open the file for writing
+    std::ofstream outFile;
+    outFile.open(fileName.c_str(), std::ios::trunc);
+    if (!outFile.is_open()) // if it failes to open, exit
+    {
+        std::cerr<<"Error opening output file: "<<fileName<<"\nPlease check the name and try again."<<std::endl;
+        return;
+    }
+    // write the header line
+
+    outFile << "Point,"<<m_compiledSurf->GetPointData()->GetArray(0)->GetName()<<","<<
+        m_compiledSurf->GetPointData()->GetArray(1)->GetName()<<",Diff,x,y,z"<<std::endl;
+    // write the rest of the file
+    double aStrain;
+    double bStrain;
+    double diff;
+    double loc[3];
+    for (int i = 0; i < m_compiledSurf->GetNumberOfPoints(); ++i)
+    {
+        m_compiledSurf->GetPointData()->GetArray(0)->GetTuple(i,&aStrain);
+        m_compiledSurf->GetPointData()->GetArray(1)->GetTuple(i,&bStrain);
+        m_compiledSurf->GetPointData()->GetArray(2)->GetTuple(i,&diff);
+        m_compiledSurf->GetPoint(i,loc);
+
+        outFile << i <<","<<aStrain<<","<<bStrain<<","<<diff<<","<<loc[0]<<","<<loc[1]<<","<<loc[2]<<std::endl;
+    }
+
+    outFile.close();
+
+
+}

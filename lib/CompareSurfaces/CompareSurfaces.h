@@ -195,11 +195,10 @@ class CompareSurfaces
         }
 
         /** A function to write the strain difference to a file given as
-          * an input. The format of the file will be:
-          "point#,x,y,z,dtStrain,instronStrain,difference"
-          where the strains are in whatever units were specified in
-          the input files. **/
-        void WriteDataToFile(std::string fileName);  //To do
+          * an input. The header will contain the format of the file.
+          * where the strains are in whatever units were specified in
+          * the input files. **/
+        void WriteDataToFile(std::string fileName);
 
 
     protected:

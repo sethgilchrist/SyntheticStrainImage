@@ -34,9 +34,10 @@ int main(int argc, char **argv)
     if (argc < 4 || (argc >4 && argc != 22))
     {
         std::cerr<<"Not enough inputs. \n Usage:"<<std::endl;
-        std::cerr<<argv[0]<<" [DT Surface] [Instron Surface] [Output File Name] [Optional Points]"<<std::endl;
+        std::cerr<<argv[0]<<" [DT Surface] [Instron Surface] [Output Path] [Optional Points]"<<std::endl;
         std::cerr<<"The files are ASCII data files exported from StrainMaster and the output file will be a"<<std::endl;
         std::cerr<<"VTK Points file and must have the extionsion .vtp"<<std::endl;
+        std::cerr<<"The output files strainCompare.vtu and strainCompare.txt will be written to the output path."<<std::endl;
         std::cerr<<"The optional points must have 18 values and given in the order:"<<std::endl;
         std::cerr<<"[surf 1, pt 1 x] [surf 1, pt 1 y] [surf 1, pt1 z] [surf1, pt2 x]...[surf2, pt3 z]"<<std::endl;
         std::cerr<<"Aborted"<<std::endl;
@@ -105,8 +106,20 @@ int main(int argc, char **argv)
     compare->CompileData(alignedSurf,probeSurf);
     std::cout<<"Data Compiled"<<std::endl;
 
+    std::string outPath = argv[3];
+    int pathLength = outPath.length();
+    if (outPath.compare(pathLength-1,1,"/"))
+    {
+        outPath.append("/");
+    }
+
+    std::string outMeshFile = outPath + "strainCompare.vtu";
+    std::string outTextFile = outPath + "strainCompare.txt";
+
+    compare->WriteDataToFile(outTextFile);
+
     vtkSmartPointer<vtkXMLUnstructuredGridWriter> writer = vtkSmartPointer<vtkXMLUnstructuredGridWriter>::New();
-    writer->SetFileName(argv[3]);
+    writer->SetFileName(outMeshFile.c_str());
     writer->SetInput(compare->GetCompiledData());
     writer->Write();
     std::cout<<"Writing Finished"<<std::endl;
