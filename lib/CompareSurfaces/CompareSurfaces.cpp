@@ -333,7 +333,7 @@ void CompareSurfaces::CompileData( vtkSmartPointer<vtkPolyData> recieverSurf, vt
     threshold->SetInputArrayToProcess(0,0,0,
                                       vtkDataObject::FIELD_ASSOCIATION_POINTS,
                                       "delta");
-    threshold->ThresholdByUpper(-999999);
+    threshold->ThresholdByUpper(-999990);
     threshold->Update();
 
     // return the compiled surface
