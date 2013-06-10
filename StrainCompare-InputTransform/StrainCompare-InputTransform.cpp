@@ -33,16 +33,26 @@ int main(int argc, char **argv)
 {
     if (argc < 4 || (argc >4 && argc != 10))
     {
+        std::cerr<<"### Execution ERROR ###"<<std::endl;
         std::cerr<<"Not enough inputs. \n Usage:"<<std::endl;
-        std::cerr<<argv[0]<<" [Reciever Surface] [Donor Surface] [Output Path] [Optional Points]"<<std::endl;
-        std::cerr<<"The files are ASCII data files exported from StrainMaster and the output file will be a"<<std::endl;
-        std::cerr<<"VTK Points file and must have the extionsion .vtp"<<std::endl;
-        std::cerr<<"The output files strainCompare.vtu and strainCompare.txt will be written to the output path."<<std::endl;
-        std::cerr<<"The optional points are the initial transform to align the reciever surface with the donor surface."<<std::endl;
-        std::cerr<<"There must be 6 values given in the order:"<<std::endl;
+        std::cerr<<argv[0]<<" [Reciever Surface] [Donor Surface] [Output Path] [Optional Initial Transform]"<<std::endl;
+        std::cerr<<std::endl;
+        std::cerr<<"[Reciever Surface] and [Donor Surface] files must be VTK Polydata files (.vtp). The output will be"<<std::endl;
+        std::cerr<<"an VTK unstructured grid file (strainCompare.vtu) and a text file (strainCompare.txt) containing"<<std::endl;
+        std::cerr<<"the input file names, any initial transform data and the point data."<<std::endl;
+        std::cerr<<"This program assumes that the reciever will be from the drop tower and the donor from the instron."<<std::endl;
+        std::cerr<<std::endl;
+        std::cerr<<"The reciever surface will the aligned to the donor surface and the data from the donor surface"<<std::endl;
+        std::cerr<<"will be transferred to the reciever. The program writes tha two output files files to [Output Path]."<<std::endl;
+        std::cerr<<"strainCompare.vtu will have three point data sets:"<<std::endl;
+        std::cerr<<"""Drop Tower Strain"", ""Instron Strain"" and ""diff"". diff is calculated as (donor (instron) - reciever (drop tower))"<<std::endl;
+        std::cerr<<std::endl;
+        std::cerr<<"The optional initial transform is to roughly align the reciever surface with the donor surface before"<<std::endl;
+        std::cerr<<"the ICP registration, and is not necessary in all cases. If no transform is given then no rough alignment is made."<<std::endl;
+        std::cerr<<"The initial transform must be given as six values the order:"<<std::endl;
         std::cerr<<"[Translate x] [Translate y] [Translate z] [Rotate x] [Rotate y] [Rotate z]"<<std::endl;
         std::cerr<<"Thes values can be obtained by manipulating the surfaces in ParaView."<<std::endl;
-        std::cerr<<"Aborted"<<std::endl;
+        std::cerr<<std::endl<<"### ABORTED ###"<<std::endl;
         return EXIT_FAILURE;
     }
     CompareSurfaces* compare = new CompareSurfaces;
