@@ -198,35 +198,56 @@ vtkSmartPointer<vtkPolyData> CompareSurfaces::ProbeVolume(vtkSmartPointer<vtkUns
 
 vtkSmartPointer<vtkPolyData> CompareSurfaces::AlignSurfaces(vtkSmartPointer<vtkPolyData> recieverSurf, vtkSmartPointer<vtkPolyData> donorSurf)
 {
-    // create a general transform for the initial transform
-    vtkSmartPointer<vtkTransform> initialTranRot = vtkSmartPointer<vtkTransform>::New();
-    initialTranRot->Translate(m_translate);
-    initialTranRot->RotateX(m_rotate[0]);
-    initialTranRot->RotateY(m_rotate[1]);
-    initialTranRot->RotateZ(m_rotate[2]);
+    // create the icp transform
+    vtkSmartPointer<vtkIterativeClosestPointTransform> icp = vtkSmartPointer<vtkIterativeClosestPointTransform>::New();
+    // use the output of icp as the final transform.
+    vtkSmartPointer<vtkTransformPolyDataFilter> finalTransform = vtkSmartPointer<vtkTransformPolyDataFilter>::New();
 
-    // transform recieverSurf using the rough transform
-    vtkSmartPointer<vtkTransformPolyDataFilter> initialTransform = vtkSmartPointer<vtkTransformPolyDataFilter>::New();
-    initialTransform->SetInput(recieverSurf);
-    initialTransform->SetTransform(initialTranRot);
-    initialTransform->Update();
+    // if an initial transfor was given, use it
+    if (m_translate[0]!=0 || m_translate[1]!=0 || m_translate[2]!=0
+        || m_rotate[0]!=0 || m_rotate[1]!=0 || m_rotate[2]!=0)
+        {
+        // create a general transform for the initial transform
+        vtkSmartPointer<vtkTransform> initialTranRot = vtkSmartPointer<vtkTransform>::New();
+        initialTranRot->Translate(m_translate);
+        initialTranRot->RotateX(m_rotate[0]);
+        initialTranRot->RotateY(m_rotate[1]);
+        initialTranRot->RotateZ(m_rotate[2]);
 
-    vtkSmartPointer<vtkXMLPolyDataWriter> tempWriter = vtkSmartPointer<vtkXMLPolyDataWriter>::New();
-    tempWriter->SetInput(initialTransform->GetOutput());
-    tempWriter->SetFileName("/home/seth/Desktop/test.vtp");
-    tempWriter->Write();
+        // transform recieverSurf using the rough transform
+        vtkSmartPointer<vtkTransformPolyDataFilter> initialTransform = vtkSmartPointer<vtkTransformPolyDataFilter>::New();
+        initialTransform->SetInput(recieverSurf);
+        initialTransform->SetTransform(initialTranRot);
+        initialTransform->Update();
+
+        // set the output of the initial tranform to be the input of the ICP
+        icp->SetSource(initialTransform->GetOutput());
+
+        // set the output of the initial transform to be the input to the final transform
+        finalTransform->SetInput(initialTransform->GetOutput());
+        }
+    else
+        {
+        // if no initial transform was set start by matching centroids
+        icp->StartByMatchingCentroidsOn();
+        // make the reciever surface the source
+        icp->SetSource(recieverSurf);
+        // set the final transform input to be the reciever surface
+        finalTransform->SetInput(recieverSurf);
+        }
+
+//    vtkSmartPointer<vtkXMLPolyDataWriter> tempWriter = vtkSmartPointer<vtkXMLPolyDataWriter>::New();
+//    tempWriter->SetInput(initialTransform->GetOutput());
+//    tempWriter->SetFileName("/home/seth/Desktop/test.vtp");
+//    tempWriter->Write();
 
     // use the output of the of the rough transform as the input to the fine icp calculation
-    vtkSmartPointer<vtkIterativeClosestPointTransform> icp = vtkSmartPointer<vtkIterativeClosestPointTransform>::New();
-    icp->SetSource(initialTransform->GetOutput());
     icp->SetTarget(donorSurf);
     icp->GetLandmarkTransform()->SetModeToRigidBody();
     icp->Modified();
     icp->Update();
 
-    // use the output of icp as the final transform.
-    vtkSmartPointer<vtkTransformPolyDataFilter> finalTransform = vtkSmartPointer<vtkTransformPolyDataFilter>::New();
-    finalTransform->SetInput(initialTransform->GetOutput());
+    // perform the final transform
     finalTransform->SetTransform(icp);
     finalTransform->Update();
 
