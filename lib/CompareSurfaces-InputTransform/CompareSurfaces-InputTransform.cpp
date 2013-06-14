@@ -207,6 +207,7 @@ vtkSmartPointer<vtkPolyData> CompareSurfaces::AlignSurfaces(vtkSmartPointer<vtkP
     if (m_translate[0]!=0 || m_translate[1]!=0 || m_translate[2]!=0
         || m_rotate[0]!=0 || m_rotate[1]!=0 || m_rotate[2]!=0)
         {
+            std::cout<<"Setting the initial transform"<<std::endl;
         // create a general transform for the initial transform
         vtkSmartPointer<vtkTransform> initialTranRot = vtkSmartPointer<vtkTransform>::New();
         initialTranRot->Translate(m_translate);
@@ -228,6 +229,7 @@ vtkSmartPointer<vtkPolyData> CompareSurfaces::AlignSurfaces(vtkSmartPointer<vtkP
         }
     else
         {
+            std::cout<<"Matching centroids"<<std::endl;
         // if no initial transform was set start by matching centroids
         icp->StartByMatchingCentroidsOn();
         // make the reciever surface the source
